@@ -6,7 +6,7 @@
   namespace CMAKE_PACKAGE_NAME { */
 
 #define NS_HEAD  \
-  namespace template_pkg {
+  namespace imenco_pt {
 
 #define NS_FOOT  \
   }
