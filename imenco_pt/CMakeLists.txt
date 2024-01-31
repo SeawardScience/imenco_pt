@@ -9,6 +9,7 @@ set(ROS_DEPENDS
     rclcpp
     std_msgs
     imenco_pt_interfaces
+    sensor_msgs
   )
 
 set(EXTERNAL_DEPENDS

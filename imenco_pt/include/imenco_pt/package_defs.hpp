@@ -1,4 +1,7 @@
 #pragma once
+
+#include <stdint.h>
+
 ///
 ///  Namespace stuff
 ///
@@ -11,4 +14,7 @@
 #define NS_FOOT  \
   }
 
+NS_HEAD
+using byte = uint8_t;
+NS_FOOT
 

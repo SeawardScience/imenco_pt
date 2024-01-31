@@ -1,14 +1,20 @@
 #pragma once
 
 #include "../package_defs.hpp"
+#include <stdint.h>
 ///
 ///  Namespace stuff
 ///
 
-#define SECTIONS_NS_HEAD  \
+#define PACKETS_NS_HEAD  \
   NS_HEAD namespace packets {
 
-#define SECTIONS_NS_FOOT  \
+#define PACKETS_NS_FOOT  \
   NS_FOOT }
 
 
+PACKETS_NS_HEAD
+
+
+
+PACKETS_NS_FOOT

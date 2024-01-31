@@ -1,54 +1,45 @@
-#pragma once  // Favor using this over the #ifndef, #define method
+#pragma once
 
 
-// First include your local package stuff
-#include "package_defs.hpp"  //  This is where we include all our namespace stuff for the package
-
-// then include external libary stuff
-#include <chrono>
-#include <functional>
-#include <memory>
-#include <string>
+#include "package_defs.hpp"
 
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/string.hpp>
+#include <sensor_msgs/msg/joy.hpp>
 
-
+#include "packets/pf.hpp"
+#include "udp_socket.hpp"
 
 NS_HEAD  // macro for consistantly defining our namespace for the package
 
 
-/**
- * @brief a minimal publisher class that extends the rclcpp::Node class to
- * demonstrate how to create ROS2 Node
- *
- * This class is used to create a ROS2 publisher that regularly publishes
- * messages to a topic.
- */
-class MinimalPublisherNode : public rclcpp::Node
+class ImencoPtNode : public rclcpp::Node
 {
 public:
-    /**
-     * @brief Construct a new Minimal Publisher object
-     *
-     * The constructor initializes the publisher and timer.
-     */
-    MinimalPublisherNode();
+    ImencoPtNode();
 
 protected:
-    /**
-     * @brief Callback function for the timer
-     *
-     * This function is called periodically by the timer. It publishes
-     * a message containing a string with a counter.
-     */
     void timer_callback();
-
-    std::string message_;
-
+    void joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg);
+    struct{
+      int port;
+      std::string dst_ip;
+      int to_addr;
+      int from_addr;
+      std::string joy_topic;
+      int pan_axis;
+      int tilt_axis;
+      float pan_gain;
+      float tilt_gain;
+      float max_joy_age;
+    }params_;
+    struct{
+      rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy;
+    }subs_;
     rclcpp::TimerBase::SharedPtr timer_; ///< Shared pointer to the timer
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_; ///< Shared pointer to the publisher
-    size_t count_; ///< Counter for the number of messages published
+    std::shared_ptr<UdpSocket> sock_ptr_;
+    packets::PFCmd pf_cmd_;
+    rclcpp::Time last_joy_time_;
+    bool time_warn_;
 };
 
 NS_FOOT
