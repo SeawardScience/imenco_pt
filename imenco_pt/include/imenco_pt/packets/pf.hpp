@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cmd_packet.hpp"
+#include "resp_packet.hpp"
 
 #include <stdlib.h>     /* abs */
 #include <string>
@@ -53,6 +54,23 @@ public:
       setBit(&data.cmd_action,3,0);
     }
     data.tilt_speed=abs(value)*MAX_SPEED;
+  }
+};
+
+struct PFRespData{
+  byte pan_speed = 0;
+  byte tilt_speed = 0;
+  char position_str[6];
+  byte pan_endstops_enable = 0;
+  byte tilt_endstops_enable = 0;
+
+  char * id(){return "PF";}
+};
+
+class PFResp : public RespPacket<PFRespData>{
+public:
+  void getPanPos(int & pan, int & tilt){
+    sscanf(data.position_str, "%3d%3d", &tilt, &pan);
   }
 };
 

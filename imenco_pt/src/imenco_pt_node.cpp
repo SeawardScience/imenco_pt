@@ -59,7 +59,13 @@ ImencoPtNode::ImencoPtNode()
   time_warn_ = false;
 
   timer_ = this->create_wall_timer(
-    500ms, std::bind(&ImencoPtNode::timer_callback, this));
+    100ms, std::bind(&ImencoPtNode::timer_callback, this));
+
+  sock_ptr_->AddCallback(std::bind(&ImencoPtNode::udpCallback,
+                              this, std::placeholders::_1));
+
+  RCLCPP_INFO(this->get_logger(), "Waiting for joy message on topic: %s", subs_.joy->get_topic_name());
+  RCLCPP_INFO(this->get_logger(), "Sending messages to IP: %s, Port: %i", params_.dst_ip.c_str(),params_.port);
 }
 
 void ImencoPtNode::timer_callback()
@@ -73,6 +79,7 @@ void ImencoPtNode::timer_callback()
     time_warn_ = false;
   }
   sock_ptr_->SendTo(params_.dst_ip, params_.port,pf_cmd_.serialize());
+  sock_ptr_->Receive();
 }
 
 void ImencoPtNode::joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
@@ -87,11 +94,25 @@ void ImencoPtNode::joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
 
   if(age.seconds()<params_.max_joy_age){
     if(!time_warn_){
-      RCLCPP_INFO(this->get_logger(), "valid joy message received");
+      RCLCPP_INFO(this->get_logger(), "Valid joy message received");
     }
     time_warn_ = true;
   }
 
+}
+
+void ImencoPtNode::udpCallback(const std::vector<byte> &datagram)
+{
+  RCLCPP_INFO_ONCE(this->get_logger(), "Received Response From PT unit");
+  int pan, tilt;
+  pf_resp_.deserialize(datagram);
+  pf_resp_.getPanPos(pan,tilt);
+
+  //RCLCPP_INFO(this->get_logger(), "%i,%i",pan,tilt);
+
+  //TODO:   pan and tilt are parsing properly.   We just need to do something with them
+
+  return;
 }
 
 NS_FOOT

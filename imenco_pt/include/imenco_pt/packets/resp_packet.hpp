@@ -8,9 +8,9 @@
 PACKETS_NS_HEAD
 
 template <typename data_T>
-struct CmdPacket{
+struct RespPacket{
 
-  static const size_t HEAD_SIZE = 10;
+  static const size_t HEAD_SIZE = 11;
   static const size_t TAIL_SIZE = 5;
 
   char head[HEAD_SIZE];
@@ -40,35 +40,11 @@ struct CmdPacket{
   byte* to_ptr(){return head_as<byte>(1);}
   byte* from_ptr(){return head_as<byte>(3);}
   byte* length_ptr(){return head_as<byte>(5);}
-  char* cmd_id_ptr(){return head_as<char>(7);}
+  char* ack_ptr(){return head_as<char>(7);}
+  char* cmd_id_ptr(){return head_as<char>(9);}
+  byte* cksum_ptr(){tail_as<uint8_t>(1);}
 
-  /*!
-   * \brief initalize adds the separator characters and the < > to the head and the tail
-   * of the message.
-   * \note This mehod will overide any data in the message
-   */
-  void initalize(uint8_t to = 3, uint8_t from = 1){
-    auto head = head_as<char>();
-    head[0] = '<';
-    for(size_t i = 1; i < HEAD_SIZE; i++){
-      head[i]=':';
-    }
-
-    auto tail = tail_as<char>();
-    for(size_t i = 0; i < TAIL_SIZE; i++){
-      tail[i]=':';
-    }
-    tail[TAIL_SIZE-1]='>';
-
-    cmd_id_ptr()[0] = data.id()[0];
-    cmd_id_ptr()[1] = data.id()[1];
-
-    *to_ptr() = to;
-    *from_ptr() = from;
-    *length_ptr() =  sizeof(data_T) + 3;
-  }
-
-  void computeChecksum(){
+  byte computeChecksum(){
     byte cksum = 0;
     for(size_t i = 1; i<HEAD_SIZE; i++){
       auto val = *head_as<uint8_t>(i);
@@ -87,24 +63,14 @@ struct CmdPacket{
     }else{
       *tail_as<char>(3) = 'G';
     }
-    *tail_as<uint8_t>(1) =  cksum;
+    //*tail_as<uint8_t>(1) =  cksum;
+    return cksum;
   }
 
-  void setBit(uint8_t * data, uint8_t index, bool state){
-    if(state)
-      *data |= (1 << index);
-    else
-      *data &= ~(1 << index);
-  }
-
-  std::vector<byte> serialize(){
-    computeChecksum();
-    std::vector<byte> out;
-    out.resize(size());
-    for(size_t i=0; i<size() ; i++){
-      out[i] = *this->as<byte>(i);
+  void deserialize(const std::vector<byte> &datagram){
+    for(size_t i = 0 ; i < size() ; i++){
+      *head_as<byte>(i) = datagram[i];
     }
-    return out;
   }
 
   size_t size(){return sizeof(CmdPacket<data_T>);}
