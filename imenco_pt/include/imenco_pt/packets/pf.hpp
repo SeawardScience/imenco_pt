@@ -17,6 +17,9 @@ struct PFCmdData{
   char * id(){return "PF";}
 };
 
+/*!
+ * \brief Corresponds to an imenco PF command which sets porpotional pand and tilt controls
+ */
 class PFCmd : public CmdPacket<PFCmdData> {
 public:
   static const uint8_t MAX_SPEED = 0x64;
