@@ -1,11 +1,13 @@
 # Imenco Pan/Tilt ROS2 Driver
-![alt text](docs/media/logo.png)
+![Imenco PT Logo](docs/media/logo.png)
 
 ## About
 
 This driver provides a means of controlling an Imenco Pan and Tilt device using standard ROS2 messages.  
 
 @note This package currently only implements UDP communications through a UDP-serial converter like a MOXA.   Direct serial communication is not yet implemented.  
+
+@warning this Package is currently in pre-release and is subject to interface and API changes at any time untill version 1.0.0
 
 ## Installation
 
@@ -29,8 +31,16 @@ colcon build
 
 ## Getting Started
 
+To talk to the system over UDP you can use the following launch command
+
+```bash
+ros2 launch imenco_pt imenco_pt_udp.launch.xml port:=40181 ip:10.0.0.31
+```
+
+replacing the port and IP with your topics.   This will get you talking to the unit with the default configuration.  To configure it further take a look at the parameters below and create your own launch file
+
 ## Topics
-This node only subscribes to one topic `/joy_console/joy` for joystick input.   The topic can be changed by using the `joy_topic` parameter
+This node only subscribes to one topic `joy_console/joy` for joystick input.   The topic can be changed by using the `joy_topic` parameter
 
 ## Parameters
 

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<launch>
+
+  <arg name="port"        default="4016"/>
+  <arg name="dst_ip"      default="10.0.0.31"/>
+  <arg name="vessel_ns"   default=""/>
+
+  <node pkg="imenco_pt" exec="imenco_pt" name="imenco_pt" namespace="$(var vessel_ns)">
+    <param from="$(find-pkg-share imenco_pt)/config/imenco_pt_udp.yaml"/>
+    <param name="port"    value="$(var port)"   />
+    <param name="dst_ip"  value="$(var dst_ip)" />
+  </node>
+
+</launch>
