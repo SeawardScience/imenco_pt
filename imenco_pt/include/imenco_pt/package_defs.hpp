@@ -1,4 +1,7 @@
 #pragma once
+
+#include <stdint.h>
+
 ///
 ///  Namespace stuff
 ///
@@ -6,9 +9,12 @@
   namespace CMAKE_PACKAGE_NAME { */
 
 #define NS_HEAD  \
-  namespace template_pkg {
+  namespace imenco_pt {
 
 #define NS_FOOT  \
   }
 
+NS_HEAD
+using byte = uint8_t;
+NS_FOOT
 

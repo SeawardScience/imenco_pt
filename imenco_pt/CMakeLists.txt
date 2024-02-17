@@ -8,7 +8,8 @@ set(ROS_DEPENDS
     ament_cmake
     rclcpp
     std_msgs
-    template_pkg_interfaces
+    imenco_pt_interfaces
+    sensor_msgs
   )
 
 set(EXTERNAL_DEPENDS
