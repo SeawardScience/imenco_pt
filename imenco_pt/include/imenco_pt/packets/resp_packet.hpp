@@ -67,13 +67,18 @@ struct RespPacket{
     return cksum;
   }
 
-  void deserialize(const std::vector<byte> &datagram){
+  bool deserialize(const std::vector<byte> &datagram){
     for(size_t i = 0 ; i < size() ; i++){
       *head_as<byte>(i) = datagram[i];
     }
+    if (memcmp(cmd_id_ptr(), data.id(), 2) == 0) {
+      return true;
+    } else {
+      return false;
+    }
   }
 
-  size_t size(){return sizeof(CmdPacket<data_T>);}
+  size_t size(){return sizeof(RespPacket<data_T>);}
 
 }__attribute__((packed));
 
