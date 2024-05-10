@@ -57,7 +57,7 @@ ImencoPtNode::ImencoPtNode()
 
   pf_cmd_.initalize(params_.to_addr, params_.from_addr);
   gl_cmd_.initalize(params_.to_addr, params_.from_addr);
-
+  es_cmd_.initalize(params_.to_addr, params_.from_addr);
   pubs_.joint_state_pub = this->create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
 
 
@@ -90,20 +90,24 @@ void ImencoPtNode::timer_callback()
     pf_cmd_.setTilt(0);
     time_warn_ = false;
   }
-  // std::cout << std::endl;
-  // std::cout << "Pan  set: "<< int(pf_cmd_.data.pan_speed) << std::endl;
-  // std::cout << "tilt set: " << int(pf_cmd_.data.tilt_speed) << std::endl;
-  // pf_cmd_.printByteAsBinary(pf_cmd_.data.cmd_action);
-  // std::cout << std::endl;
-  auto cmd = gl_cmd_.serialize();
 
 
-  if(return_to_home_){
-    sock_ptr_->SendTo(params_.dst_ip, params_.port,gl_cmd_.serialize());
-    //RCLCPP_INFO(this->get_logger(), "RTH");
+  // auto cmd = es_cmd_.serialize();
+  // for (auto byte : cmd) {
+  //   std::cout << static_cast<char>(byte);
+  // }
+  // std::cout << std::endl; // End line after printing all characters
+
+  if(stop_counter>4){
+    sock_ptr_->SendTo(params_.dst_ip, params_.port,es_cmd_.serialize());
+    stop_counter = 0;
   }else{
-    sock_ptr_->SendTo(params_.dst_ip, params_.port,pf_cmd_.serialize());
-    //RCLCPP_INFO(this->get_logger(), "man control");
+    if(return_to_home_){
+      sock_ptr_->SendTo(params_.dst_ip, params_.port,gl_cmd_.serialize());
+    }else{
+      sock_ptr_->SendTo(params_.dst_ip, params_.port,pf_cmd_.serialize());
+    }
+    stop_counter++;
   }
 
 
@@ -131,6 +135,41 @@ void ImencoPtNode::joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
   }
   if(msg->axes[params_.pan_axis] != 0.0 || msg->axes[params_.tilt_axis] != 0.0){
     return_to_home_ = false;
+  }
+
+  int pan, tilt;
+  pf_resp_.getPos(pan,tilt);
+
+
+  if(msg->buttons[params_.limit_btn.ccw]){
+    RCLCPP_INFO(this->get_logger(), "Setting AW Limit At: %i", pan);
+    packets::AWCmd cmd;
+    cmd.initalize(params_.to_addr, params_.from_addr);
+    sock_ptr_->SendTo(params_.dst_ip, params_.port,cmd.serialize());
+  }
+  if(msg->buttons[params_.limit_btn.cw]){
+    RCLCPP_INFO(this->get_logger(), "Setting CW Limit At: %i", pan);
+    packets::CWCmd cmd;
+    cmd.initalize(params_.to_addr, params_.from_addr);
+    sock_ptr_->SendTo(params_.dst_ip, params_.port,cmd.serialize());
+  }
+
+  if(msg->buttons[params_.limit_btn.up]){
+    packets::UTCmd cmd;
+    cmd.initalize(params_.to_addr, params_.from_addr);
+    sock_ptr_->SendTo(params_.dst_ip, params_.port,cmd.serialize());
+  }
+
+  if(msg->buttons[params_.limit_btn.down]){
+    packets::DTCmd cmd;
+    cmd.initalize(params_.to_addr, params_.from_addr);
+    sock_ptr_->SendTo(params_.dst_ip, params_.port,cmd.serialize());
+  }
+
+  if(msg->buttons[params_.ignore_limit_btn]){
+    es_cmd_.useStops(true);
+  }else{
+    es_cmd_.useStops(false);
   }
 
 

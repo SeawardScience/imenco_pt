@@ -11,6 +11,7 @@
 
 #include "packets/pf.hpp"
 #include "packets/gl.hpp"
+#include "packets/set_stop.hpp"
 #include "udp_socket.hpp"
 
 NS_HEAD  // macro for consistantly defining our namespace for the package
@@ -37,7 +38,15 @@ protected:
     float pan_gain;
     float tilt_gain;
     float max_joy_age;
-    int home_btn = 4;
+    int home_btn = 0;
+    struct
+    {
+      int ccw  = 1;
+      int cw   = 2;
+      int up   = 3;
+      int down = 4;
+    } limit_btn;
+    int ignore_limit_btn = 5;
     std::string frame_id = "pan_tilt";
   }params_;
   struct{
@@ -52,7 +61,9 @@ protected:
   packets::PFResp pf_resp_;
   packets::GLCmd gl_cmd_;
   packets::GLResp gl_resp_;
+  packets::ESCmd es_cmd_;
   rclcpp::Time last_joy_time_;
+  int stop_counter = 0;
   bool time_warn_;
   bool return_to_home_ = false;
 
