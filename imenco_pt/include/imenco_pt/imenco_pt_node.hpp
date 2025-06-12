@@ -26,6 +26,9 @@ protected:
   void timer_callback();
   void joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg);
   void udpCallback(const std::vector<byte> &datagram);
+
+  OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
+  rcl_interfaces::msg::SetParametersResult onParameterChange(const std::vector<rclcpp::Parameter> &parameters);
   //void rawCallback(const imenco_pt_interfaces::msg::RawPacket::SharedPtr msg);
   struct{
     int port;
@@ -39,6 +42,10 @@ protected:
     float tilt_gain;
     float max_joy_age;
     int home_btn = 0;
+    struct{
+      float pan_deg = 180;
+      float tilt_deg = 180;
+    } home_pos;
     struct
     {
       int ccw  = 1;

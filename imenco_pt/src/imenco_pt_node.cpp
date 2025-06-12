@@ -50,8 +50,18 @@ ImencoPtNode::ImencoPtNode()
   this->declare_parameter("home_btn", params_.home_btn);
   this->get_parameter("home_btn",params_.home_btn);
 
+  this->declare_parameter("home_pos.pan_deg", params_.home_pos.pan_deg);
+  this->get_parameter("home_pos.pan_deg",params_.home_pos.pan_deg);
+
+  this->declare_parameter("home_pos.tilt_deg", params_.home_pos.tilt_deg);
+  this->get_parameter("home_pos.tilt_deg",params_.home_pos.tilt_deg);
+
   this->declare_parameter("frame_id", params_.frame_id);
   this->get_parameter("frame_id",params_.frame_id);
+
+  param_callback_handle_ = this->add_on_set_parameters_callback(
+      std::bind(&ImencoPtNode::onParameterChange, this, std::placeholders::_1)
+  );
 
   sock_ptr_.reset(new UdpSocket(params_.port));
 
@@ -74,7 +84,7 @@ ImencoPtNode::ImencoPtNode()
   sock_ptr_->AddCallback(std::bind(&ImencoPtNode::udpCallback,
                               this, std::placeholders::_1));
 
-  gl_cmd_.setPos(180,180);
+  gl_cmd_.setPos(params_.home_pos.pan_deg,params_.home_pos.tilt_deg);
 
   RCLCPP_INFO(this->get_logger(), "Waiting for joy message on topic: %s", subs_.joy->get_topic_name());
   RCLCPP_INFO(this->get_logger(), "Sending messages to IP: %s, Port: %i", params_.dst_ip.c_str(),params_.port);
@@ -103,6 +113,7 @@ void ImencoPtNode::timer_callback()
     stop_counter = 0;
   }else{
     if(return_to_home_){
+      gl_cmd_.setPos(params_.home_pos.pan_deg,params_.home_pos.tilt_deg);
       sock_ptr_->SendTo(params_.dst_ip, params_.port,gl_cmd_.serialize());
     }else{
       sock_ptr_->SendTo(params_.dst_ip, params_.port,pf_cmd_.serialize());
@@ -212,5 +223,29 @@ void ImencoPtNode::udpCallback(const std::vector<byte> &datagram)
 
   return;
 }
+
+rcl_interfaces::msg::SetParametersResult ImencoPtNode::onParameterChange(
+    const std::vector<rclcpp::Parameter> &parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  result.reason = "success";
+
+  for (const auto &param : parameters) {
+    if (param.get_name() == "home_pos.pan_deg") {
+      params_.home_pos.pan_deg = param.as_double();
+      RCLCPP_INFO(this->get_logger(), "Updating home_pos.pan_deg to: %.2f", params_.home_pos.pan_deg);
+    } else if (param.get_name() == "home_pos.tilt_deg") {
+      params_.home_pos.tilt_deg = param.as_double();
+      RCLCPP_INFO(this->get_logger(), "Updating home_pos.tilt_deg to: %.2f", params_.home_pos.tilt_deg);
+    } else{
+      result.successful = false;
+      result.reason = "Online update of " + param.get_name() + " not supported";
+    }
+  }
+
+  return result;
+}
+
 
 NS_FOOT
