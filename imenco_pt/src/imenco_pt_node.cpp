@@ -84,8 +84,6 @@ ImencoPtNode::ImencoPtNode()
   sock_ptr_->AddCallback(std::bind(&ImencoPtNode::udpCallback,
                               this, std::placeholders::_1));
 
-  gl_cmd_.setPos(params_.home_pos.pan_deg,params_.home_pos.tilt_deg);
-
   RCLCPP_INFO(this->get_logger(), "Waiting for joy message on topic: %s", subs_.joy->get_topic_name());
   RCLCPP_INFO(this->get_logger(), "Sending messages to IP: %s, Port: %i", params_.dst_ip.c_str(),params_.port);
 }
