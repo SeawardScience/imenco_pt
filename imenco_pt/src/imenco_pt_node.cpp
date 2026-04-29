@@ -121,12 +121,12 @@ void ImencoPtNode::timer_callback()
 
 
   diag_counter_++;
-  if (diag_counter_ > 24) {
+  if (diag_counter_ > 4) {
     sock_ptr_->SendTo(params_.dst_ip, params_.port, ed_cmd_.serialize());
     diag_counter_ = 0;
   }
 
-  sock_ptr_->Receive();
+  while (sock_ptr_->Receive()) {}
 }
 
 void ImencoPtNode::joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
@@ -245,8 +245,8 @@ void ImencoPtNode::produceEndstopDiagnostics(diagnostic_updater::DiagnosticStatu
     return;
   }
 
-  bool pan_en  = pf_resp_.data.pan_endstops_enable  == 0x30;
-  bool tilt_en = pf_resp_.data.tilt_endstops_enable == 0x30;
+  bool pan_en  = pf_resp_.data.pan_endstops_enable  == 0x31;
+  bool tilt_en = pf_resp_.data.tilt_endstops_enable == 0x31;
 
   if (!pan_en && !tilt_en) {
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "Pan and Tilt endstops disabled");

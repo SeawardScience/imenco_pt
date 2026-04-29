@@ -47,7 +47,7 @@ void UdpSocket::SendTo(const std::string& ip, int port, const std::vector<byte>&
     sendto(sockfd_, message.data(), message.size(), 0, reinterpret_cast<struct sockaddr*>(&dest_addr), sizeof(dest_addr));
 }
 
-void UdpSocket::Receive() {
+bool UdpSocket::Receive() {
     byte* buffer = new byte[buffer_size_];
     struct sockaddr_in sender_addr;
     socklen_t sender_len = sizeof(sender_addr);
@@ -59,14 +59,10 @@ void UdpSocket::Receive() {
         for (const auto& callback : callbacks_) {
             callback(message);
         }
-    } else if (n < 0) {
-        if (errno != EWOULDBLOCK && errno != EAGAIN) {
-            //std::cerr << "Error receiving data: " << strerror(errno) << std::endl;
-        }
-        // No data available, non-blocking mode
     }
 
     delete[] buffer;
+    return n > 0;
 }
 
 void UdpSocket::AddCallback(const MessageCallback& callback) {

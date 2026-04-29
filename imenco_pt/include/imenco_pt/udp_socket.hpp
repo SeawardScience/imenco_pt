@@ -25,7 +25,7 @@ class UdpSocket {
   UdpSocket(int port, size_t buffer_size = 1024);
   ~UdpSocket();
   void SendTo(const std::string& ip, int port, const std::vector<byte>& message);
-  void Receive();
+  bool Receive();
   void AddCallback(const MessageCallback& callback);
 
  private:
