@@ -53,18 +53,32 @@ ImencoPtNode::ImencoPtNode()
   this->declare_parameter("frame_id", params_.frame_id);
   this->get_parameter("frame_id",params_.frame_id);
 
+  this->declare_parameter("checksum_warn_threshold", params_.checksum_warn_threshold);
+  this->get_parameter("checksum_warn_threshold", params_.checksum_warn_threshold);
+
+  this->declare_parameter("pan_speed", params_.pan_speed);
+  this->get_parameter("pan_speed", params_.pan_speed);
+
+  this->declare_parameter("tilt_speed", params_.tilt_speed);
+  this->get_parameter("tilt_speed", params_.tilt_speed);
+
   sock_ptr_.reset(new UdpSocket(params_.port));
 
   pf_cmd_.initalize(params_.to_addr, params_.from_addr);
   gl_cmd_.initalize(params_.to_addr, params_.from_addr);
   es_cmd_.initalize(params_.to_addr, params_.from_addr);
   ed_cmd_.initalize(params_.to_addr, params_.from_addr);
+  ds_cmd_.initalize(params_.to_addr, params_.from_addr);
+  ds_cmd_.setSpeed(params_.pan_speed);
+  ta_cmd_.initalize(params_.to_addr, params_.from_addr);
+  ta_cmd_.setSpeed(params_.tilt_speed);
   pubs_.joint_state_pub = this->create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
 
-  updater_.setHardwareID(this->get_name());
+  updater_.setHardwareID(params_.dst_ip);
   updater_.add("Position", this, &ImencoPtNode::producePositionDiagnostics);
   updater_.add("Endstops", this, &ImencoPtNode::produceEndstopDiagnostics);
   updater_.add("Errors",   this, &ImencoPtNode::produceErrorDiagnostics);
+  updater_.add("Checksum", this, &ImencoPtNode::produceChecksumDiagnostics);
 
 
   subs_.joy = this->create_subscription<sensor_msgs::msg::Joy>(
@@ -82,6 +96,12 @@ ImencoPtNode::ImencoPtNode()
                               this, std::placeholders::_1));
 
   gl_cmd_.setPos(180,180);
+
+  sock_ptr_->SendTo(params_.dst_ip, params_.port, ds_cmd_.serialize());
+  sock_ptr_->SendTo(params_.dst_ip, params_.port, ta_cmd_.serialize());
+
+  param_cb_handle_ = this->add_on_set_parameters_callback(
+    std::bind(&ImencoPtNode::onParameterChange, this, std::placeholders::_1));
 
   RCLCPP_INFO(this->get_logger(), "Waiting for joy message on topic: %s", subs_.joy->get_topic_name());
   RCLCPP_INFO(this->get_logger(), "Sending messages to IP: %s, Port: %i", params_.dst_ip.c_str(),params_.port);
@@ -199,14 +219,23 @@ void ImencoPtNode::udpCallback(const std::vector<byte> &datagram)
   last_response_time_ = this->now();
 
   int pan, tilt;
+  auto record_checksum_error = [this](){
+    checksum_error_count_++;
+    checksum_error_times_.push_back(this->now());
+  };
+
+  bool cksum_ok = false;
   if(datagram.size() >= pf_resp_.size() && pf_resp_.deserialize(datagram)){
-    pf_resp_.getPos(pan,tilt);
+    if(pf_resp_.verifyChecksum()){ pf_resp_.getPos(pan,tilt); cksum_ok = true; }
+    else { record_checksum_error(); }
   }
   if(datagram.size() >= gl_resp_.size() && gl_resp_.deserialize(datagram)){
-    gl_resp_.getPos(pan,tilt);
+    if(gl_resp_.verifyChecksum()){ gl_resp_.getPos(pan,tilt); cksum_ok = true; }
+    else { record_checksum_error(); }
   }
   if(datagram.size() >= ed_resp_.size() && ed_resp_.deserialize(datagram)){
-    last_error_byte_ = ed_resp_.data.error_byte;
+    if(ed_resp_.verifyChecksum()){ last_error_byte_ = ed_resp_.data.error_byte; cksum_ok = true; }
+    else { record_checksum_error(); }
   }
 
   sensor_msgs::msg::JointState joint_state_msg;
@@ -231,10 +260,10 @@ void ImencoPtNode::producePositionDiagnostics(diagnostic_updater::DiagnosticStat
 
   int pan, tilt;
   pf_resp_.getPos(pan, tilt);
-  stat.add("pan_position_deg",  pan);
-  stat.add("tilt_position_deg", tilt);
-  stat.add("pan_speed",         (int)pf_resp_.data.pan_speed);
-  stat.add("tilt_speed",        (int)pf_resp_.data.tilt_speed);
+  stat.add("pan_position_deg",       pan);
+  stat.add("tilt_position_deg",      tilt);
+  stat.add("pan_speed_device",   (int)pf_resp_.data.pan_speed);
+  stat.add("tilt_speed_device",  (int)pf_resp_.data.tilt_speed);
 }
 
 void ImencoPtNode::produceEndstopDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat)
@@ -294,6 +323,47 @@ void ImencoPtNode::produceErrorDiagnostics(diagnostic_updater::DiagnosticStatusW
   stat.add("over_current",      (last_error_byte_ & (1 << 3)) ? "true" : "false");
   stat.add("tilt_stall",        (last_error_byte_ & (1 << 4)) ? "true" : "false");
   stat.add("pan_stall",         (last_error_byte_ & (1 << 5)) ? "true" : "false");
+}
+
+rcl_interfaces::msg::SetParametersResult ImencoPtNode::onParameterChange(
+  const std::vector<rclcpp::Parameter>& parameters)
+{
+  for (const auto& p : parameters) {
+    if (p.get_name() == "pan_speed") {
+      params_.pan_speed = p.as_int();
+      ds_cmd_.setSpeed(params_.pan_speed);
+      sock_ptr_->SendTo(params_.dst_ip, params_.port, ds_cmd_.serialize());
+      RCLCPP_INFO(this->get_logger(), "Pan speed set to %d", params_.pan_speed);
+    } else if (p.get_name() == "tilt_speed") {
+      params_.tilt_speed = p.as_int();
+      ta_cmd_.setSpeed(params_.tilt_speed);
+      sock_ptr_->SendTo(params_.dst_ip, params_.port, ta_cmd_.serialize());
+      RCLCPP_INFO(this->get_logger(), "Tilt speed set to %d", params_.tilt_speed);
+    }
+  }
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  return result;
+}
+
+void ImencoPtNode::produceChecksumDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat)
+{
+  rclcpp::Time now = this->now();
+  while(!checksum_error_times_.empty() &&
+        (now - checksum_error_times_.front()).seconds() > 60.0){
+    checksum_error_times_.pop_front();
+  }
+  int recent = static_cast<int>(checksum_error_times_.size());
+
+  if(recent >= params_.checksum_warn_threshold){
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN,
+      std::to_string(recent) + " errors in last 60s");
+  } else {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "OK");
+  }
+  stat.add("errors_last_60s", recent);
+  stat.add("total_errors",    checksum_error_count_);
+  stat.add("warn_threshold",  params_.checksum_warn_threshold);
 }
 
 NS_FOOT

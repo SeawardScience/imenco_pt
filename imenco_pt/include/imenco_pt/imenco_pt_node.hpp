@@ -3,6 +3,9 @@
 
 #include "package_defs.hpp"
 
+#include <deque>
+
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joy.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
@@ -31,6 +34,8 @@ protected:
   void producePositionDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
   void produceEndstopDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
   void produceErrorDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
+  void produceChecksumDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
+  rcl_interfaces::msg::SetParametersResult onParameterChange(const std::vector<rclcpp::Parameter>& parameters);
   //void rawCallback(const imenco_pt_interfaces::msg::RawPacket::SharedPtr msg);
   struct{
     int port;
@@ -53,6 +58,9 @@ protected:
     } limit_btn;
     int ignore_limit_btn = 5;
     std::string frame_id = "pan_tilt";
+    int checksum_warn_threshold = 5;
+    int pan_speed  = 100;
+    int tilt_speed = 100;
   }params_;
   struct{
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub;
@@ -68,6 +76,8 @@ protected:
   packets::GLCmd gl_cmd_;
   packets::GLResp gl_resp_;
   packets::ESCmd es_cmd_;
+  packets::DSCmd ds_cmd_;
+  packets::TACmd ta_cmd_;
   packets::EDCmd ed_cmd_;
   packets::EDResp ed_resp_;
   rclcpp::Time last_joy_time_;
@@ -75,6 +85,9 @@ protected:
   int stop_counter = 0;
   int diag_counter_ = 0;
   uint8_t last_error_byte_ = 0;
+  int checksum_error_count_ = 0;
+  std::deque<rclcpp::Time> checksum_error_times_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_handle_;
   bool time_warn_;
   bool return_to_home_ = false;
 

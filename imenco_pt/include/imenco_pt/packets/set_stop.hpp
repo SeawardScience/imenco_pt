@@ -45,4 +45,26 @@ public:
   }
 };
 
+struct DSCmdData {
+  byte speed = 0x64;
+  char* id() { return "DS"; }
+};
+class DSCmd : public CmdPacket<DSCmdData> {
+public:
+  void setSpeed(int speed) {
+    data.speed = static_cast<byte>(std::clamp(speed, 0, 100));
+  }
+};
+
+struct TACmdData {
+  byte speed = 0x64;
+  char* id() { return "TA"; }
+};
+class TACmd : public CmdPacket<TACmdData> {
+public:
+  void setSpeed(int speed) {
+    data.speed = static_cast<byte>(std::clamp(speed, 0, 100));
+  }
+};
+
 PACKETS_NS_FOOT

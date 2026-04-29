@@ -42,7 +42,17 @@ struct RespPacket{
   byte* length_ptr(){return head_as<byte>(5);}
   char* ack_ptr(){return head_as<char>(7);}
   char* cmd_id_ptr(){return head_as<char>(9);}
-  byte* cksum_ptr(){tail_as<uint8_t>(1);}
+  byte* cksum_ptr(){ return tail_as<uint8_t>(1); }
+
+  bool verifyChecksum(){
+    byte computed = 0;
+    for(size_t i = 1; i < HEAD_SIZE; i++)
+      computed ^= *head_as<uint8_t>(i);
+    for(size_t i = 0; i < sizeof(data_T); i++)
+      computed ^= *data_as<uint8_t>(i);
+    byte expected = (computed == 0x3C || computed == 0x3E) ? 0xFF : computed;
+    return *tail_as<uint8_t>(1) == expected;
+  }
 
   byte computeChecksum(){
     byte cksum = 0;
