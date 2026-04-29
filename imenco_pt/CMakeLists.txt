@@ -10,6 +10,7 @@ set(ROS_DEPENDS
     std_msgs
     imenco_pt_interfaces
     sensor_msgs
+    diagnostic_updater
   )
 
 set(EXTERNAL_DEPENDS

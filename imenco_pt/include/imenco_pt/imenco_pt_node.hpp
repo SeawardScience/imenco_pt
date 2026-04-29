@@ -6,12 +6,14 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joy.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
+#include <diagnostic_updater/diagnostic_updater.hpp>
 
 #include <imenco_pt_interfaces/msg/raw_packet.h>
 
 #include "packets/pf.hpp"
 #include "packets/gl.hpp"
 #include "packets/set_stop.hpp"
+#include "packets/ed.hpp"
 #include "udp_socket.hpp"
 
 NS_HEAD  // macro for consistantly defining our namespace for the package
@@ -26,6 +28,9 @@ protected:
   void timer_callback();
   void joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg);
   void udpCallback(const std::vector<byte> &datagram);
+  void producePositionDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
+  void produceEndstopDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
+  void produceErrorDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
   //void rawCallback(const imenco_pt_interfaces::msg::RawPacket::SharedPtr msg);
   struct{
     int port;
@@ -55,6 +60,7 @@ protected:
   struct{
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy;
   }subs_;
+  diagnostic_updater::Updater updater_;
   rclcpp::TimerBase::SharedPtr timer_; ///< Shared pointer to the timer
   std::shared_ptr<UdpSocket> sock_ptr_;
   packets::PFCmd pf_cmd_;
@@ -62,8 +68,13 @@ protected:
   packets::GLCmd gl_cmd_;
   packets::GLResp gl_resp_;
   packets::ESCmd es_cmd_;
+  packets::EDCmd ed_cmd_;
+  packets::EDResp ed_resp_;
   rclcpp::Time last_joy_time_;
+  rclcpp::Time last_response_time_;
   int stop_counter = 0;
+  int diag_counter_ = 0;
+  uint8_t last_error_byte_ = 0;
   bool time_warn_;
   bool return_to_home_ = false;
 

@@ -5,7 +5,7 @@ using namespace std::chrono_literals;
 NS_HEAD
 
 ImencoPtNode::ImencoPtNode()
-  : Node("imenco_pt")
+  : Node("imenco_pt"), updater_(this)
 {
   params_.dst_ip = "10.0.0.31";
   this->declare_parameter("dst_ip", params_.dst_ip);
@@ -58,13 +58,20 @@ ImencoPtNode::ImencoPtNode()
   pf_cmd_.initalize(params_.to_addr, params_.from_addr);
   gl_cmd_.initalize(params_.to_addr, params_.from_addr);
   es_cmd_.initalize(params_.to_addr, params_.from_addr);
+  ed_cmd_.initalize(params_.to_addr, params_.from_addr);
   pubs_.joint_state_pub = this->create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
+
+  updater_.setHardwareID(this->get_name());
+  updater_.add("Position", this, &ImencoPtNode::producePositionDiagnostics);
+  updater_.add("Endstops", this, &ImencoPtNode::produceEndstopDiagnostics);
+  updater_.add("Errors",   this, &ImencoPtNode::produceErrorDiagnostics);
 
 
   subs_.joy = this->create_subscription<sensor_msgs::msg::Joy>(
         params_.joy_topic, 1, std::bind(&ImencoPtNode::joyCallback, this, std::placeholders::_1));
 
   last_joy_time_ = this->now();
+  last_response_time_ = this->now();
 
   time_warn_ = false;
 
@@ -113,12 +120,12 @@ void ImencoPtNode::timer_callback()
 
 
 
-  //std::cout << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>() << " ";
-  // for (auto val : pf_cmd_.serialize()) {
-  //   std::cout << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(val) << " ";
-  // }
-  // std::cout << "\n";
-  //RCLCPP_INFO(this->get_logger(), "%f,%f",msg->axes[params_.pan_axis]*params_.pan_gain,msg->axes[params_.tilt_axis]*params_.tilt_gain);
+  diag_counter_++;
+  if (diag_counter_ > 24) {
+    sock_ptr_->SendTo(params_.dst_ip, params_.port, ed_cmd_.serialize());
+    diag_counter_ = 0;
+  }
+
   sock_ptr_->Receive();
 }
 
@@ -189,16 +196,18 @@ void ImencoPtNode::joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
 void ImencoPtNode::udpCallback(const std::vector<byte> &datagram)
 {
   RCLCPP_INFO_ONCE(this->get_logger(), "Received Response From PT unit");
+  last_response_time_ = this->now();
+
   int pan, tilt;
-  if(pf_resp_.deserialize(datagram)){
+  if(datagram.size() >= pf_resp_.size() && pf_resp_.deserialize(datagram)){
     pf_resp_.getPos(pan,tilt);
   }
-  if(gl_resp_.deserialize(datagram)){
+  if(datagram.size() >= gl_resp_.size() && gl_resp_.deserialize(datagram)){
     gl_resp_.getPos(pan,tilt);
   }
-
-  //RCLCPP_INFO(this->get_logger(), "%i,%i",pan,tilt);
-
+  if(datagram.size() >= ed_resp_.size() && ed_resp_.deserialize(datagram)){
+    last_error_byte_ = ed_resp_.data.error_byte;
+  }
 
   sensor_msgs::msg::JointState joint_state_msg;
   joint_state_msg.header.frame_id = params_.frame_id;
@@ -209,8 +218,82 @@ void ImencoPtNode::udpCallback(const std::vector<byte> &datagram)
   joint_state_msg.position.push_back(tilt * M_PI / 180); // Convert degrees to radians
 
   pubs_.joint_state_pub->publish(joint_state_msg);
+}
 
-  return;
+void ImencoPtNode::producePositionDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat)
+{
+  rclcpp::Duration age = this->now() - last_response_time_;
+  if (age.seconds() > 2.0) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No data");
+    return;
+  }
+  stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "OK");
+
+  int pan, tilt;
+  pf_resp_.getPos(pan, tilt);
+  stat.add("pan_position_deg",  pan);
+  stat.add("tilt_position_deg", tilt);
+  stat.add("pan_speed",         (int)pf_resp_.data.pan_speed);
+  stat.add("tilt_speed",        (int)pf_resp_.data.tilt_speed);
+}
+
+void ImencoPtNode::produceEndstopDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat)
+{
+  rclcpp::Duration age = this->now() - last_response_time_;
+  if (age.seconds() > 2.0) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No data");
+    return;
+  }
+
+  bool pan_en  = pf_resp_.data.pan_endstops_enable  == 0x30;
+  bool tilt_en = pf_resp_.data.tilt_endstops_enable == 0x30;
+
+  if (!pan_en && !tilt_en) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "Pan and Tilt endstops disabled");
+  } else if (!pan_en) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "Pan endstops disabled");
+  } else if (!tilt_en) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "Tilt endstops disabled");
+  } else {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "OK");
+  }
+
+  stat.add("pan_endstops_enabled",  pan_en  ? "true" : "false");
+  stat.add("tilt_endstops_enabled", tilt_en ? "true" : "false");
+}
+
+void ImencoPtNode::produceErrorDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat)
+{
+  rclcpp::Duration age = this->now() - last_response_time_;
+  if (age.seconds() > 2.0) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "No response from device");
+    return;
+  }
+
+  if (last_error_byte_ == 0) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "OK");
+  } else {
+    std::vector<std::string> faults;
+    if (last_error_byte_ & (1 << 0)) faults.push_back("Over Temperature");
+    if (last_error_byte_ & (1 << 1)) faults.push_back("Low Oil Level");
+    if (last_error_byte_ & (1 << 2)) faults.push_back("Moisture Ingress");
+    if (last_error_byte_ & (1 << 3)) faults.push_back("Over Current");
+    if (last_error_byte_ & (1 << 4)) faults.push_back("Tilt Stall");
+    if (last_error_byte_ & (1 << 5)) faults.push_back("Pan Stall");
+    std::string msg;
+    for (size_t i = 0; i < faults.size(); ++i) {
+      if (i > 0) msg += ", ";
+      msg += faults[i];
+    }
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, msg);
+  }
+
+  stat.add("over_temperature",  (last_error_byte_ & (1 << 0)) ? "true" : "false");
+  stat.add("low_oil_level",     (last_error_byte_ & (1 << 1)) ? "true" : "false");
+  stat.add("moisture_ingress",  (last_error_byte_ & (1 << 2)) ? "true" : "false");
+  stat.add("over_current",      (last_error_byte_ & (1 << 3)) ? "true" : "false");
+  stat.add("tilt_stall",        (last_error_byte_ & (1 << 4)) ? "true" : "false");
+  stat.add("pan_stall",         (last_error_byte_ & (1 << 5)) ? "true" : "false");
 }
 
 NS_FOOT
