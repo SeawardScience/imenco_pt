@@ -34,7 +34,7 @@ protected:
   void producePositionDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
   void produceEndstopDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
   void produceErrorDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
-  void produceChecksumDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
+  void produceCommsDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat);
   rcl_interfaces::msg::SetParametersResult onParameterChange(const std::vector<rclcpp::Parameter>& parameters);
   //void rawCallback(const imenco_pt_interfaces::msg::RawPacket::SharedPtr msg);
   struct{
@@ -61,6 +61,9 @@ protected:
     int checksum_warn_threshold = 5;
     int pan_speed  = 100;
     int tilt_speed = 100;
+    float joy_deadband = 0.2f;
+    int minimum_speed  = 50;
+    std::string hardware_id = "Imenco PT";
   }params_;
   struct{
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub;

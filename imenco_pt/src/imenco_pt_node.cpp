@@ -62,6 +62,15 @@ ImencoPtNode::ImencoPtNode()
   this->declare_parameter("tilt_speed", params_.tilt_speed);
   this->get_parameter("tilt_speed", params_.tilt_speed);
 
+  this->declare_parameter("hardware_id", params_.hardware_id);
+  this->get_parameter("hardware_id", params_.hardware_id);
+
+  this->declare_parameter("joy_deadband", params_.joy_deadband);
+  this->get_parameter("joy_deadband", params_.joy_deadband);
+
+  this->declare_parameter("minimum_speed", params_.minimum_speed);
+  this->get_parameter("minimum_speed", params_.minimum_speed);
+
   sock_ptr_.reset(new UdpSocket(params_.port));
 
   pf_cmd_.initalize(params_.to_addr, params_.from_addr);
@@ -74,11 +83,11 @@ ImencoPtNode::ImencoPtNode()
   ta_cmd_.setSpeed(params_.tilt_speed);
   pubs_.joint_state_pub = this->create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
 
-  updater_.setHardwareID(params_.dst_ip);
+  updater_.setHardwareID(params_.hardware_id);
   updater_.add("Position", this, &ImencoPtNode::producePositionDiagnostics);
   updater_.add("Endstops", this, &ImencoPtNode::produceEndstopDiagnostics);
   updater_.add("Errors",   this, &ImencoPtNode::produceErrorDiagnostics);
-  updater_.add("Checksum", this, &ImencoPtNode::produceChecksumDiagnostics);
+  updater_.add("Comms", this, &ImencoPtNode::produceCommsDiagnostics);
 
 
   subs_.joy = this->create_subscription<sensor_msgs::msg::Joy>(
@@ -154,13 +163,38 @@ void ImencoPtNode::joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
 
 
   last_joy_time_ = msg->header.stamp;
-  pf_cmd_.setPan(msg->axes[params_.pan_axis]*params_.pan_gain);
-  pf_cmd_.setTilt(msg->axes[params_.tilt_axis]*params_.tilt_gain);
 
-  if(msg->axes[params_.pan_axis] == 0.0 && msg->axes[params_.tilt_axis] == 0.0 && msg->buttons[params_.home_btn]){
+  float pan_raw  = msg->axes[params_.pan_axis];
+  float tilt_raw = msg->axes[params_.tilt_axis];
+
+  // Joystick deadband
+  if (std::abs(pan_raw)  < params_.joy_deadband) pan_raw  = 0.0f;
+  if (std::abs(tilt_raw) < params_.joy_deadband) tilt_raw = 0.0f;
+
+  // Single-axis priority: when both axes active, command only the dominant one
+  if (pan_raw != 0.0f && tilt_raw != 0.0f) {
+    if (std::abs(pan_raw) >= std::abs(tilt_raw)) tilt_raw = 0.0f;
+    else                                          pan_raw  = 0.0f;
+  }
+
+  // Apply gain
+  float pan_cmd  = pan_raw  * params_.pan_gain;
+  float tilt_cmd = tilt_raw * params_.tilt_gain;
+
+  // Minimum speed: snap non-zero commands up to minimum
+  float min_frac = params_.minimum_speed / 100.0f;
+  if (pan_cmd  != 0.0f && std::abs(pan_cmd)  < min_frac)
+    pan_cmd  = std::copysign(min_frac, pan_cmd);
+  if (tilt_cmd != 0.0f && std::abs(tilt_cmd) < min_frac)
+    tilt_cmd = std::copysign(min_frac, tilt_cmd);
+
+  pf_cmd_.setPan(pan_cmd);
+  pf_cmd_.setTilt(tilt_cmd);
+
+  if(pan_raw == 0.0f && tilt_raw == 0.0f && msg->buttons[params_.home_btn]){
     return_to_home_ = true;
   }
-  if(msg->axes[params_.pan_axis] != 0.0 || msg->axes[params_.tilt_axis] != 0.0){
+  if(pan_raw != 0.0f || tilt_raw != 0.0f){
     return_to_home_ = false;
   }
 
@@ -295,7 +329,7 @@ void ImencoPtNode::produceErrorDiagnostics(diagnostic_updater::DiagnosticStatusW
 {
   rclcpp::Duration age = this->now() - last_response_time_;
   if (age.seconds() > 2.0) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "No response from device");
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No response from device");
     return;
   }
 
@@ -339,6 +373,12 @@ rcl_interfaces::msg::SetParametersResult ImencoPtNode::onParameterChange(
       ta_cmd_.setSpeed(params_.tilt_speed);
       sock_ptr_->SendTo(params_.dst_ip, params_.port, ta_cmd_.serialize());
       RCLCPP_INFO(this->get_logger(), "Tilt speed set to %d", params_.tilt_speed);
+    } else if (p.get_name() == "joy_deadband") {
+      params_.joy_deadband = static_cast<float>(p.as_double());
+      RCLCPP_INFO(this->get_logger(), "Joy deadband set to %f", params_.joy_deadband);
+    } else if (p.get_name() == "minimum_speed") {
+      params_.minimum_speed = p.as_int();
+      RCLCPP_INFO(this->get_logger(), "Minimum speed set to %d", params_.minimum_speed);
     }
   }
   rcl_interfaces::msg::SetParametersResult result;
@@ -346,7 +386,7 @@ rcl_interfaces::msg::SetParametersResult ImencoPtNode::onParameterChange(
   return result;
 }
 
-void ImencoPtNode::produceChecksumDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat)
+void ImencoPtNode::produceCommsDiagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat)
 {
   rclcpp::Time now = this->now();
   while(!checksum_error_times_.empty() &&
@@ -355,9 +395,12 @@ void ImencoPtNode::produceChecksumDiagnostics(diagnostic_updater::DiagnosticStat
   }
   int recent = static_cast<int>(checksum_error_times_.size());
 
-  if(recent >= params_.checksum_warn_threshold){
+  rclcpp::Duration age = now - last_response_time_;
+  if (age.seconds() > 2.0) {
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "No response from device");
+  } else if (recent >= params_.checksum_warn_threshold) {
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN,
-      std::to_string(recent) + " errors in last 60s");
+      std::to_string(recent) + " checksum errors in last 60s");
   } else {
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "OK");
   }

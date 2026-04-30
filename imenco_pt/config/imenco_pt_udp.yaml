@@ -10,3 +10,5 @@
     pan_gain: -1.0                     # a multiplier for the pan axis  negative value to invert axis
     tilt_axis: 1                      # the joystick axis you want for tilting
     tilt_gain: 1.0                    # a multiplier for the tilt axis  negative value to invert axiss
+    joy_deadband: 0.2                # axis deadband (0.0–1.0); values within ±this of center are treated as 0
+    minimum_speed: 50               # minimum speed command (0–100) when commanding any motion; non-zero commands below this are snapped up
